@@ -1,11 +1,13 @@
 import wx
 import wx.richtext as rt
-from db import check_user, insert_user
+from db import check_user, insert_user, get_user_id, get_conversation, update_conversation
 from reply import reply_with_text
 
 class ChatFrame(wx.Frame):
     def __init__(self, *args, **kw):
         super(ChatFrame, self).__init__(*args, **kw)
+
+        self.user_id = None
         
         self.panel_sizer = wx.BoxSizer(wx.VERTICAL)  # 用於切換面板
         self.login_panel = LoginPanel(self)
@@ -78,7 +80,9 @@ class LoginPanel(wx.Panel):
         
         result = check_user(username, password)
         if result == "Login successful":
+            self.parent.user_id = get_user_id(username)
             self.parent.show_panel('chat')
+            self.parent.chat_panel.first_display()
         else:
             self.error_label.SetLabel(result)
 
@@ -176,37 +180,50 @@ class ChatPanel(wx.Panel):
         upload_button.Bind(wx.EVT_BUTTON, self.on_upload_image)  # 綁定上傳圖片按鈕事件
         self.input_box.Bind(wx.EVT_TEXT_ENTER, self.on_send)  # 捕捉 Enter 鍵事件
 
+    def first_display(self):
+        convertWord = {"assistant": "myRobot", "user":"user"}
+        if self.GetParent().user_id:  # 確認已登入的用戶 ID
+            conversation = get_conversation(self.GetParent().user_id)
+            if conversation:
+                for msg in conversation:  # 遍歷所有 messages，顯示在聊天框中
+                    self.chat_display.BeginBold()
+                    self.chat_display.WriteText(f"{convertWord[msg['role']]}: ")
+                    self.chat_display.EndBold()
+                    for content_item in msg['content']:
+                        if "text" in content_item:
+                            self.chat_display.WriteText(f"{content_item['text']}\n")
+            else:
+                self.chat_display.BeginBold()
+                self.chat_display.WriteText("myRobot: ")
+                self.chat_display.EndBold()
+                self.chat_display.WriteText("Hello! How can I help you today?\n")
+
     def on_send(self, event):
-        # 獲取輸入框內容
         message = self.input_box.GetValue()
         if message.strip():
             # 顯示用戶輸入的文字
             self.chat_display.BeginBold()
-            self.chat_display.WriteText(f"Bot: ")
+            self.chat_display.WriteText("User: ")
             self.chat_display.EndBold()
             self.chat_display.WriteText(f"{message}\n")
             self.input_box.SetValue("")  # 清空輸入框
-            
-            # 模擬 Bot 回應根據消息的內容給出不同的回應
-            response = self.generate_bot_response(message)
-            self.chat_display.BeginBold()
-            self.chat_display.WriteText("Bot: ")
-            self.chat_display.EndBold()
-            self.chat_display.WriteText(f"{response}\n")
 
-    def generate_bot_response(self, message):
-        """根據用戶輸入生成不同的機器人回應"""
-        message = message.lower()
-        if "hello" in message or "hi" in message:
-            return "Hello! How can I help you today?"
-        elif "how are you" in message:
-            return "I'm just a bot, but I'm functioning as expected. How about you?"
-        elif "bye" in message or "goodbye" in message:
-            return "Goodbye! Have a great day!"
-        elif "help" in message:
-            return "Sure, I'm here to help! Ask me anything or upload an image."
-        else:
-            return "Your input has been processed successfully."
+            # 產生並顯示 Bot 的回應
+            user_id = self.GetParent().user_id
+            if user_id:
+                conversation = get_conversation(user_id) or []  # 獲取對話記錄
+
+                # 使用 reply_with_text 來處理對話
+                updated_messages, response = reply_with_text(message, conversation)
+
+                # 顯示 Bot 的回應
+                self.chat_display.BeginBold()
+                self.chat_display.WriteText("myRobot: ")
+                self.chat_display.EndBold()
+                self.chat_display.WriteText(f"{response}\n")
+
+                # 更新對話紀錄至資料庫
+                update_conversation(user_id, updated_messages)
 
     def on_upload_image(self, event):
         # 打開文件對話框以選擇圖片文件
@@ -233,7 +250,7 @@ class ChatPanel(wx.Panel):
 
             # 顯示提示信息
             self.chat_display.BeginBold()
-            self.chat_display.WriteText("Bot: Please enter text to describe or process the image.\n")
+            self.chat_display.WriteText("myRobot: Please enter text to describe or process the image.\n")
             self.chat_display.EndBold()
 
 class MyApp(wx.App):

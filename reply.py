@@ -4,14 +4,14 @@ def reply_with_text(input_text, messages = None):
     
     if messages == None:
         messages = [
-            {"role": "Bot", "content": "Hello! How can I help you today?"}
+            {"role": "assistant", "content": [{"text": "Hello! How can I help you today?"}]}
         ]
     messages.append(
         {
             "role": "user",
             "content": [
-                {"type": "text", "text": input_text},
-            ],
+                {"type": "text", "text": input_text}
+            ]
         }
     )
     response = chat_text(
@@ -20,7 +20,7 @@ def reply_with_text(input_text, messages = None):
     )
     messages.append(
         {
-            "role": "Bot",
+            "role": "assistant",
             "content": [
                 {
                 "type": "text",
