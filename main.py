@@ -1,7 +1,9 @@
 import wx
 import wx.richtext as rt
+import base64
+from io import BytesIO
 from db import check_user, insert_user, get_user_id, get_conversation, update_conversation
-from reply import reply_with_text
+from reply import reply_with_text, reply_with_image
 
 class ChatFrame(wx.Frame):
     def __init__(self, *args, **kw):
@@ -181,7 +183,7 @@ class ChatPanel(wx.Panel):
         self.input_box.Bind(wx.EVT_TEXT_ENTER, self.on_send)  # 捕捉 Enter 鍵事件
 
     def first_display(self):
-        convertWord = {"assistant": "myRobot", "user":"user"}
+        convertWord = {"assistant": "myRobot", "user": "user"}
         if self.GetParent().user_id:  # 確認已登入的用戶 ID
             conversation = get_conversation(self.GetParent().user_id)
             if conversation:
@@ -189,14 +191,40 @@ class ChatPanel(wx.Panel):
                     self.chat_display.BeginBold()
                     self.chat_display.WriteText(f"{convertWord[msg['role']]}: ")
                     self.chat_display.EndBold()
+                    
                     for content_item in msg['content']:
-                        if "text" in content_item:
-                            self.chat_display.WriteText(f"{content_item['text']}\n")
+                        if content_item.get("type") == "text":
+                            text_content = content_item['text']
+                            
+                            # 顯示普通文本內容
+                            self.chat_display.WriteText(f"{text_content}\n")
+
+                        elif content_item.get("type") == "image_url" and "url" in content_item['image_url']:
+                            image_data_url = content_item['image_url']['url']
+
+                            # 判斷是否為 Base64 編碼的圖片數據 URL
+                            if image_data_url.startswith("data:image/"):
+                                try:
+                                    # 提取 Base64 部分並進行解碼
+                                    base64_data = image_data_url.split(",")[1]
+                                    image_data = base64.b64decode(base64_data)
+                                    image_stream = BytesIO(image_data)
+                                    image = wx.Image(image_stream)
+                                    scaled_image = image.Scale(100, 100)  # 設置縮放的大小
+                                    bmp = scaled_image.ConvertToBitmap()
+
+                                    self.chat_display.WriteImage(bmp)
+                                    self.chat_display.WriteText("\n")  # 插入換行符
+                                except Exception as e:
+                                    self.chat_display.WriteText(f"[Error displaying image: {str(e)}]\n")
+
             else:
                 self.chat_display.BeginBold()
                 self.chat_display.WriteText("myRobot: ")
                 self.chat_display.EndBold()
                 self.chat_display.WriteText("Hello! How can I help you today?\n")
+
+
 
     def on_send(self, event):
         message = self.input_box.GetValue()
@@ -226,39 +254,74 @@ class ChatPanel(wx.Panel):
                 update_conversation(user_id, updated_messages)
 
     def on_upload_image(self, event):
-        # 打開文件對話框以選擇圖片文件
         with wx.FileDialog(self, "Choose an image", wildcard="Image files (*.png;*.jpg;*.jpeg)|*.png;*.jpg;*.jpeg",
                            style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST) as fileDialog:
             
             if fileDialog.ShowModal() == wx.ID_CANCEL:
-                return  # 用戶取消選擇
+                return
             
-            # 獲取圖片路徑
             image_path = fileDialog.GetPath()
             
-            # 加載圖片並縮放到指定大小 (例如 100x100 像素)
-            image = wx.Image(image_path, wx.BITMAP_TYPE_ANY)
-            scaled_image = image.Scale(100, 100)  # 設置縮放的大小
-            bmp = scaled_image.ConvertToBitmap()
+            # 讀取圖片並進行 Base64 編碼
+            with open(image_path, "rb") as image_file:
+                encoded_image = base64.b64encode(image_file.read()).decode('utf-8')
 
-            # 在聊天框中插入縮放後的圖片
             self.chat_display.BeginBold()
             self.chat_display.WriteText("User uploaded an image:\n")
             self.chat_display.EndBold()
-            self.chat_display.WriteImage(bmp)
-            self.chat_display.WriteText("\n")  # 插入換行符
 
-            # 顯示提示信息
+            # 顯示縮放後的圖片
+            image = wx.Image(image_path, wx.BITMAP_TYPE_ANY)
+            scaled_image = image.Scale(100, 100)
+            bmp = scaled_image.ConvertToBitmap()
+            self.chat_display.WriteImage(bmp)
+            self.chat_display.WriteText("\n")
+            
             self.chat_display.BeginBold()
             self.chat_display.WriteText("myRobot: Please enter text to describe or process the image.\n")
             self.chat_display.EndBold()
+
+            user_id = self.GetParent().user_id
+            if user_id:
+                conversation = get_conversation(user_id) or []
+
+                def on_user_enter_description(event):
+                    description = self.input_box.GetValue()
+                    if description.strip():
+                        self.chat_display.BeginBold()
+                        self.chat_display.WriteText("User: ")
+                        self.chat_display.EndBold()
+                        self.chat_display.WriteText(f"{description}\n")
+                        self.input_box.SetValue("")
+
+                        # 使用 reply_with_image 來生成回應
+                        updated_messages, response = reply_with_image(description, encoded_image, conversation)
+
+                        # 顯示 GPT 的回應
+                        self.chat_display.BeginBold()
+                        self.chat_display.WriteText("myRobot: ")
+                        self.chat_display.EndBold()
+                        self.chat_display.WriteText(f"{response}\n")
+
+                        # 更新對話紀錄至資料庫
+                        update_conversation(user_id, updated_messages)
+
+                        # 恢復原有的事件綁定
+                        self.input_box.Bind(wx.EVT_TEXT_ENTER, self.on_send)
+
+                # 將輸入框的 Enter 鍵事件綁定到新的函數
+                self.input_box.Bind(wx.EVT_TEXT_ENTER, on_user_enter_description)
+
 
 class MyApp(wx.App):
     def OnInit(self):
         frame = ChatFrame(None, title="Chat Example", size=(450, 500))
         frame.Show()
         return True
-
-if __name__ == '__main__':
+    
+def main():
     app = MyApp()
     app.MainLoop()
+
+if __name__ == '__main__':
+    main()
