@@ -315,7 +315,7 @@ class ChatPanel(wx.Panel):
 
 class MyApp(wx.App):
     def OnInit(self):
-        frame = ChatFrame(None, title="Chat Example", size=(450, 500))
+        frame = ChatFrame(None, title="ChatBot", size=(450, 500))
         frame.Show()
         return True
     
