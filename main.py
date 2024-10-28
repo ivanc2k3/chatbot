@@ -139,6 +139,7 @@ class RegisterPanel(wx.Panel):
         elif result == "Username already exists":
             # 用户名已存在，清空输入框并聚焦
             self.username_input.SetValue("")
+            self.password_input.SetValue("")
             self.username_input.SetFocus()
         
     def on_back_to_login(self, event):
