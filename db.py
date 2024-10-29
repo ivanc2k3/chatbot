@@ -121,3 +121,12 @@ def update_conversation(user_id, messages):
     
     connection.commit()
     connection.close()
+
+def delete_conversation(user_id):
+    connection = create_connection()
+    cursor = connection.cursor()
+
+    cursor.execute('DELETE FROM Conversation WHERE user_id = ?', (user_id,))
+    
+    connection.commit()
+    connection.close()

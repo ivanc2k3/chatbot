@@ -2,7 +2,7 @@ import wx
 import wx.richtext as rt
 import base64
 from io import BytesIO
-from db import check_user, insert_user, get_user_id, get_conversation, update_conversation
+from db import check_user, insert_user, get_user_id, get_conversation, update_conversation, delete_conversation
 from reply import reply_with_text, reply_with_image
 
 class ChatFrame(wx.Frame):
@@ -163,12 +163,20 @@ class ChatPanel(wx.Panel):
         
         # 初始化變量來保存上傳的圖片
         self.uploaded_image = None
+
+        # 創建刪除對話按鈕
+        delete_button = wx.Button(self, label="Delete Conversation")
+
+        # 綁定刪除按鈕事件
+        delete_button.Bind(wx.EVT_BUTTON, self.on_delete_conversation)
+
         
         # 設置水平佈局
         hbox = wx.BoxSizer(wx.HORIZONTAL)
         hbox.Add(self.input_box, proportion=1, flag=wx.EXPAND)
         hbox.Add(send_button, proportion=0)
         hbox.Add(upload_button, proportion=0)
+        hbox.Add(delete_button, proportion=0)  # 在水平方向佈局中添加刪除按鈕
         
         # 設置垂直佈局
         vbox = wx.BoxSizer(wx.VERTICAL)
@@ -224,8 +232,6 @@ class ChatPanel(wx.Panel):
                 self.chat_display.WriteText("myRobot: ")
                 self.chat_display.EndBold()
                 self.chat_display.WriteText("Hello! How can I help you today?\n")
-
-
 
     def on_send(self, event):
         message = self.input_box.GetValue()
@@ -312,6 +318,22 @@ class ChatPanel(wx.Panel):
 
                 # 將輸入框的 Enter 鍵事件綁定到新的函數
                 self.input_box.Bind(wx.EVT_TEXT_ENTER, on_user_enter_description)
+
+    def on_delete_conversation(self, event):
+        user_id = self.GetParent().user_id
+        if user_id:
+            # 删除数据库中的对话记录
+            delete_conversation(user_id)
+            
+            # 清空显示的聊天记录
+            self.chat_display.Clear()
+            
+            # 显示删除后的默认消息
+            self.chat_display.BeginBold()
+            self.chat_display.WriteText("myRobot: ")
+            self.chat_display.EndBold()
+            self.chat_display.WriteText("Conversation deleted. How can I help you further?\n")
+
 
 
 class MyApp(wx.App):
